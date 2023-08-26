@@ -5,6 +5,7 @@ from PIL import ImageDraw
 import torch
 import gradio as gr
 from transformers import AutoTokenizer
+from huggingface_hub import login, snapshot_download
 
 from utils.data_preprocess import build_transform, RAHuskyCaptionCollator
 from custom_models.all_seeing_model import AllSeeingModelForCaption
@@ -18,7 +19,12 @@ POINT_COLOR = (255, 0, 0)
 BBOX_WIDTH = 5
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-MODEL_PATH = './assets/asm_ft_v0'
+MODEL_PATH = './assets/All-Seeing-Model-FT-V0'
+
+if not os.path.exists(MODEL_PATH):
+    print('begin to download model ckpt')
+    login(token=os.environ['HF_TOKEN'])
+    snapshot_download(repo_id='Weiyun1025/All-Seeing-Model-FT-V0', cache_dir='./cache', local_dir=MODEL_PATH)
 
 print(f'Device: {device}, Load model from {MODEL_PATH}')
 
