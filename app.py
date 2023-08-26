@@ -18,7 +18,7 @@ POINT_COLOR = (255, 0, 0)
 BBOX_WIDTH = 5
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-MODEL_PATH = '/mnt/petrelfs/share_data/wangweiyun/recognize_anything_annotation/asm_ckpt/asm_ft_v0'
+MODEL_PATH = './assets/asm_ft_v0'
 
 print(f'Device: {device}, Load model from {MODEL_PATH}')
 
