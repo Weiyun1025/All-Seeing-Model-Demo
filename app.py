@@ -245,4 +245,5 @@ for i in range(10010, 10100):
             break
 
 print('server_port:', server_port)
-demo.queue().launch(server_name="0.0.0.0", server_port=server_port)
+# demo.queue().launch(server_name="0.0.0.0", server_port=server_port)
+demo.queue().launch()
