@@ -2,49 +2,50 @@ import os
 import argparse
 from PIL import ImageDraw
 
-import torch
 import gradio as gr
-from transformers import AutoTokenizer
-from huggingface_hub import login, snapshot_download
 
-from utils.data_preprocess import build_transform, RAHuskyCaptionCollator
-from custom_models.all_seeing_model import AllSeeingModelForCaption
+DEBUG_MODE = False
+if not DEBUG_MODE:
+    import torch
+    from transformers import AutoTokenizer
+    from huggingface_hub import login, snapshot_download
+    from utils.data_preprocess import build_transform, RAHuskyCaptionCollator
+    from custom_models.all_seeing_model import AllSeeingModelForCaption
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    MODEL_PATH = './assets/All-Seeing-Model-FT-V0'
+
+    if not os.path.exists(MODEL_PATH):
+        print('begin to download model ckpt')
+        login(token=os.environ['HF_TOKEN'])
+        snapshot_download(repo_id='Weiyun1025/All-Seeing-Model-FT-V0', cache_dir='./cache', local_dir=MODEL_PATH)
+
+    model = AllSeeingModelForCaption.from_pretrained(MODEL_PATH).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
+    image_processor = build_transform(model.config.vision_config.image_size)
+    collator = RAHuskyCaptionCollator(
+        tokenizer=tokenizer,
+        image_processor=image_processor,
+        num_queries=model.config.num_query_tokens,
+        input_size=model.config.vision_config.image_size,
+        train_mode=False,
+    )
+
+    generation_config = dict(
+        do_sample=False,
+        temperature=0.7,
+        max_new_tokens=512,
+        num_beams=1,
+    )
+
 
 TEXT_PLACEHOLDER_BEFORE_UPLOAD = 'Please upload your image first'
+TEXT_PLACEHOLDER_AFTER_UPLOAD_BEFORE_POINT = 'Please select two points on the image to determine the position of the box'
 TEXT_PLACEHOLDER_AFTER_UPLOAD = 'Type and press Enter'
 
 POINT_RADIUS = 16
 POINT_COLOR = (255, 0, 0)
 
 BBOX_WIDTH = 5
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-MODEL_PATH = './assets/All-Seeing-Model-FT-V0'
-
-if not os.path.exists(MODEL_PATH):
-    print('begin to download model ckpt')
-    login(token=os.environ['HF_TOKEN'])
-    snapshot_download(repo_id='Weiyun1025/All-Seeing-Model-FT-V0', cache_dir='./cache', local_dir=MODEL_PATH)
-
-print(f'Device: {device}, Load model from {MODEL_PATH}')
-
-model = AllSeeingModelForCaption.from_pretrained(MODEL_PATH).to(device)
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
-image_processor = build_transform(model.config.vision_config.image_size)
-collator = RAHuskyCaptionCollator(
-    tokenizer=tokenizer,
-    image_processor=image_processor,
-    num_queries=model.config.num_query_tokens,
-    input_size=model.config.vision_config.image_size,
-    train_mode=False,
-)
-
-generation_config = dict(
-    do_sample=False,
-    temperature=0.7,
-    max_new_tokens=512,
-    num_beams=1,
-)
 
 
 def parse_args():
@@ -61,7 +62,6 @@ def gradio_reset(user_state: dict):
         gr.update(value=None, interactive=True),
         gr.update(interactive=False),
         gr.update(interactive=False),
-        gr.update(interactive=True),
         gr.update(value=None),
         gr.update(interactive=False, placeholder=TEXT_PLACEHOLDER_BEFORE_UPLOAD),
         user_state,
@@ -75,6 +75,7 @@ def point_reset(user_state: dict):
     user_state['image'] = user_state['original_image'].copy()
     return (
         user_state['original_image'],
+        gr.update(interactive=False, placeholder=TEXT_PLACEHOLDER_AFTER_UPLOAD_BEFORE_POINT),
         user_state,
     )
 
@@ -82,9 +83,11 @@ def point_reset(user_state: dict):
 def text_reset(user_state: dict):
     user_state.pop('input_ids', None)
     user_state.pop('attention_mask', None)
+
+    interactive = len(user_state['points']) == 2 if 'points' in user_state else False
     return (
         gr.update(value=None),
-        gr.update(interactive=True, placeholder=TEXT_PLACEHOLDER_BEFORE_UPLOAD),
+        gr.update(interactive=interactive, placeholder=TEXT_PLACEHOLDER_AFTER_UPLOAD if interactive else TEXT_PLACEHOLDER_AFTER_UPLOAD_BEFORE_POINT),
         user_state,
     )
 
@@ -95,20 +98,20 @@ def upload_img(image, user_state):
             None,
             None,
             None,
-            gr.update(interactive=True),
             gr.update(interactive=False, placeholder=TEXT_PLACEHOLDER_BEFORE_UPLOAD),
             user_state,
         )
 
     user_state['image'] = image.copy()
     user_state['original_image'] = image.copy()
-    user_state['pixel_values'] = image_processor(image)
+    if not DEBUG_MODE:
+        user_state['pixel_values'] = image_processor(image)
+
     return (
         gr.update(interactive=False),
         gr.update(interactive=True),
         gr.update(interactive=True),
-        gr.update(interactive=False),
-        gr.update(interactive=True, placeholder=TEXT_PLACEHOLDER_AFTER_UPLOAD),
+        gr.update(interactive=False, placeholder=TEXT_PLACEHOLDER_AFTER_UPLOAD_BEFORE_POINT),
         user_state,
     )
 
@@ -147,7 +150,12 @@ def upload_point(user_state: dict, evt: gr.SelectData):
         draw = ImageDraw.Draw(image)
         draw.ellipse((x - POINT_RADIUS, y - POINT_RADIUS, x + POINT_RADIUS, y + POINT_RADIUS), fill=POINT_COLOR)
 
-    return image, user_state
+    interactive = len(user_state['points']) == 2
+    return (
+        image,
+        gr.update(interactive=interactive, placeholder=TEXT_PLACEHOLDER_AFTER_UPLOAD if interactive else TEXT_PLACEHOLDER_AFTER_UPLOAD_BEFORE_POINT),
+        user_state,
+    )
 
 
 def ask_and_answer(chatbot: list, text_input: str, user_state: dict):
@@ -156,26 +164,30 @@ def ask_and_answer(chatbot: list, text_input: str, user_state: dict):
     else:
         raise gr.Error('Please select 2 points.')
 
-    inputs = {
-        'query': text_input,
-        'bbox': bbox,
-        'image': user_state['original_image'],
-        'pixel_values': user_state['pixel_values'],
+    if DEBUG_MODE:
+        outputs = 'hello world'
+    else:
+        inputs = {
+            'query': text_input,
+            'bbox': bbox,
+            'image': user_state['original_image'],
+            'pixel_values': user_state['pixel_values'],
 
-        # useless
-        'image_id': -1,
-        'label': '',
-    }
-    inputs = collator([inputs])
-    inputs['pixel_values'] = inputs['pixel_values'].to(device)
-    inputs['input_ids'] = inputs['input_ids'].to(device)
-    inputs['attention_mask'] = inputs['attention_mask'].to(device)
-    inputs['boxes'][0] = inputs['boxes'][0].to(device)
-    inputs['boxes_mask'] = inputs['boxes_mask'].to(device)
-    inputs.pop('labels', None)
+            # useless
+            'image_id': -1,
+            'label': '',
+        }
+        inputs = collator([inputs])
+        inputs['pixel_values'] = inputs['pixel_values'].to(device)
+        inputs['input_ids'] = inputs['input_ids'].to(device)
+        inputs['attention_mask'] = inputs['attention_mask'].to(device)
+        inputs['boxes'][0] = inputs['boxes'][0].to(device)
+        inputs['boxes_mask'] = inputs['boxes_mask'].to(device)
+        inputs.pop('labels', None)
 
-    outputs = model.generate(**inputs, **generation_config)['sequences']
-    outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
+        outputs = model.generate(**inputs, **generation_config)['sequences']
+        outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
+
     # chatbot.append([text_input, outputs])
     chatbot = [[text_input, outputs]]
     return (
@@ -211,21 +223,20 @@ with gr.Blocks() as demo:
             with gr.Row():
                 clear_points = gr.Button("Clear points", interactive=False)
                 clear_text = gr.Button("Clear text", interactive=False)
-            upload_button = gr.Button(value="Upload & Start Chat", interactive=True, variant="primary")
-            clear_all = gr.Button("Restart")
+            clear_all = gr.Button("Restart", variant='primary')
 
         with gr.Column():
-            chatbot = gr.Chatbot(label='All-Seeing-Model', height=515)
+            chatbot = gr.Chatbot(label='All-Seeing-Model', height=460)
             text_input = gr.Textbox(label='User', interactive=False, placeholder=TEXT_PLACEHOLDER_BEFORE_UPLOAD)
 
-    image.select(upload_point, [user_state], [image, user_state])
-    upload_button.click(upload_img, [image, user_state], [image, clear_text, clear_points, upload_button, text_input, user_state])
+    image.select(upload_point, [user_state], [image, text_input, user_state])
+    image.upload(upload_img, [image, user_state], [image, clear_text, clear_points, text_input, user_state])
 
     text_input.submit(ask_and_answer, [chatbot, text_input, user_state], [chatbot, text_input, user_state])
 
-    clear_points.click(point_reset, [user_state], [image, user_state], queue=False)
+    clear_points.click(point_reset, [user_state], [image, text_input, user_state], queue=False)
     clear_text.click(text_reset, [user_state], [chatbot, text_input, user_state], queue=False)
-    clear_all.click(gradio_reset, [user_state], [image, clear_text, clear_points, upload_button, chatbot, text_input, user_state], queue=False)
+    clear_all.click(gradio_reset, [user_state], [image, clear_text, clear_points, chatbot, text_input, user_state], queue=False)
 
     gr.HTML(
         """
@@ -233,7 +244,6 @@ with gr.Blocks() as demo:
             <h2 style='font-size: x-large'> User Manual: </h2>
             <ol>
                 <li> Upload your image.  </li>
-                <li> Click the Upload & Start Chat button. </li>
                 <li> Select two points on the image to determine the position of the box. </li>
                 <li> Begin to chat! </li>
             </ol>
