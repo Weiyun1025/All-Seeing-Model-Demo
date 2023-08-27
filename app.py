@@ -124,8 +124,11 @@ def upload_point(user_state: dict, evt: gr.SelectData):
     new_point = (evt.index[0], evt.index[1])
 
     if len(user_state.get('points', [])) >= 2:
-        return image, user_state
-
+        return (
+            image,
+            gr.update(interactive=True, placeholder=TEXT_PLACEHOLDER_AFTER_UPLOAD),
+            user_state,
+        )
     if 'points' in user_state:
         user_state['points'].append(new_point)
         assert len(user_state['points']) == 2
