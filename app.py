@@ -19,6 +19,7 @@ if not DEBUG_MODE:
         login(token=os.environ['HF_TOKEN'])
         snapshot_download(repo_id='Weiyun1025/All-Seeing-Model-FT-V0', cache_dir='./cache', local_dir=MODEL_PATH)
 
+    os.listdir(MODEL_PATH)
     model = AllSeeingModelForCaption.from_pretrained(MODEL_PATH).to(device)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
     image_processor = build_transform(model.config.vision_config.image_size)
