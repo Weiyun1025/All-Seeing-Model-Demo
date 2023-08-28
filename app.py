@@ -1,4 +1,5 @@
 import os
+import warnings
 import argparse
 from PIL import ImageDraw
 
@@ -7,6 +8,7 @@ import gradio as gr
 DEBUG_MODE = False
 if not DEBUG_MODE:
     import torch
+    import transformers
     from transformers import AutoTokenizer
     from huggingface_hub import login, snapshot_download
     from utils.data_preprocess import build_transform, RAHuskyCaptionCollator
@@ -14,12 +16,15 @@ if not DEBUG_MODE:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     MODEL_PATH = './assets/All-Seeing-Model-FT-V0'
 
+    warnings.warn(f'torch version: {torch.__version__}')
+    warnings.warn(f'transformers version: {transformers.__version__}')
+
     if not os.path.exists(MODEL_PATH):
         print('begin to download model ckpt')
         login(token=os.environ['HF_TOKEN'])
         snapshot_download(repo_id='Weiyun1025/All-Seeing-Model-FT-V0', cache_dir='./cache', local_dir=MODEL_PATH)
 
-    os.listdir(MODEL_PATH)
+    warnings.warn(f'Files in {MODEL_PATH}:', os.listdir(MODEL_PATH))
     model = AllSeeingModelForCaption.from_pretrained(MODEL_PATH).to(device)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, use_fast=False)
     image_processor = build_transform(model.config.vision_config.image_size)
