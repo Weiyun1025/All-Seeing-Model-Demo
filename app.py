@@ -19,10 +19,10 @@ if not DEBUG_MODE:
     warnings.warn(f'torch version: {torch.__version__}')
     warnings.warn(f'transformers version: {transformers.__version__}')
 
-    if not os.path.exists(MODEL_PATH):
-        print('begin to download model ckpt')
-        login(token=os.environ['HF_TOKEN'])
-        snapshot_download(repo_id='Weiyun1025/All-Seeing-Model-FT-V0', cache_dir='./cache', local_dir=MODEL_PATH)
+    # if not os.path.exists(MODEL_PATH):
+    print('begin to download model ckpt')
+    login(token=os.environ['HF_TOKEN'])
+    snapshot_download(repo_id='Weiyun1025/All-Seeing-Model-FT-V0', cache_dir='./cache', local_dir=MODEL_PATH, resume_download=True)
 
     warnings.warn(f'Files in {MODEL_PATH}:', os.listdir(MODEL_PATH))
     model = AllSeeingModelForCaption.from_pretrained(MODEL_PATH).to(device)
