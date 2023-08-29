@@ -4,3 +4,7 @@ transformers==4.28.0
 peft==0.2.0
 sentencepiece
 numpy
+urllib3
+requests
+pyopenssl
+pyasn1
