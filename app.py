@@ -15,6 +15,7 @@ if not DEBUG_MODE:
     from custom_models.all_seeing_model import AllSeeingModelForCaption
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     MODEL_PATH = './assets/All-Seeing-Model-FT-V0'
+    os.makedirs(MODEL_PATH, exist_ok=True)
 
     warnings.warn(f'torch version: {torch.__version__}')
     warnings.warn(f'transformers version: {transformers.__version__}')
